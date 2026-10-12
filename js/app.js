@@ -109,7 +109,6 @@ function renderMeta() {
     const links = document.createElement("p");
     links.className = "story-links";
     links.append(anchor(preset.sourceUrl, preset.sourceLabel));
-    links.append(document.createTextNode(" · "));
     links.append(anchor(preset.registerUrl, "Register record"));
     story.append(links);
   }
