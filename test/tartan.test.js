@@ -8,6 +8,9 @@ import {
   colourAt,
   decodeShare,
   encodeShare,
+  limitNumber,
+  repeatScale,
+  shareHref,
   expandTokens,
   formatPalette,
   formatThreadcount,
@@ -205,6 +208,34 @@ test("Royal Stewart SVG is a compact masked twill under 1 MB", () => {
 test("share hash restores the same palette and threadcount", () => {
   const hash = `#${encodeShare(PALETTE, SYMMETRIC)}`;
   assert.deepEqual(decodeShare(hash), { palette: PALETTE, threadcount: SYMMETRIC });
+});
+
+test("an edit shared and reopened is that edit", () => {
+  const royal = PRESETS.find((preset) => preset.id === "royal-stewart");
+  const editedPalette = royal.palette.replace("G=GREEN;", "G=#112233#GREEN;");
+  const editedThread = royal.threadcount.replace("R/144", "R/146");
+  const href = shareHref("https://mikeornstein.com/tartan/#palette=stale", editedPalette, editedThread);
+  const url = new URL(href);
+  assert.equal(url.hash.slice(1).includes("#"), false);
+  assert.deepEqual(decodeShare(url.hash), { palette: editedPalette, threadcount: editedThread });
+  const browserHash = `#${decodeURIComponent(url.hash.slice(1))}`;
+  assert.deepEqual(decodeShare(browserHash), { palette: editedPalette, threadcount: editedThread });
+  assert.notEqual(editedThread, royal.threadcount);
+  assert.equal(decodeShare(url.hash).threadcount.startsWith("R/144"), false);
+});
+
+test("export fields cap high numbers and reject a repeat size of 0", () => {
+  assert.deepEqual(limitNumber("999999", 16, 4096, "Tile width"), {
+    value: 4096,
+    note: "Capped at 4096.",
+  });
+  assert.deepEqual(limitNumber("0", 1, 8, "Repeat size"), {
+    value: null,
+    note: "Repeat size must be at least 1.",
+  });
+  assert.deepEqual(limitNumber("2", 1, 8, "Repeat size"), { value: 2, note: "" });
+  assert.deepEqual(repeatScale("8", 1000), { value: 4, note: "Capped at 4." });
+  assert.equal(repeatScale("0", 288).value, null);
 });
 
 test("stepper and reorder keep Register formatting", () => {

@@ -353,6 +353,54 @@ export function encodeShare(palette, threadcount) {
 }
 
 /**
+ * Absolute URL whose hash is the current palette and threadcount.
+ * A hex shade's "#" is percent-encoded so it cannot split the fragment.
+ * @param {string} pageHref
+ * @param {string} palette
+ * @param {string} threadcount
+ */
+export function shareHref(pageHref, palette, threadcount) {
+  const url = new URL(pageHref, "https://example.com");
+  url.hash = encodeShare(palette, threadcount);
+  return url.href;
+}
+
+/**
+ * @param {string | number} raw
+ * @param {number} min
+ * @param {number} max
+ * @param {string} label
+ * @returns {{ value: number | null, note: string }}
+ */
+export function limitNumber(raw, min, max, label) {
+  const text = String(raw ?? "").trim();
+  const number = Number(text);
+  if (text === "" || !Number.isFinite(number)) {
+    return { value: null, note: `${label} must be ${min}–${max}.` };
+  }
+  if (number < min) {
+    return { value: null, note: `${label} must be at least ${min}.` };
+  }
+  if (Math.round(number) > max) return { value: max, note: `Capped at ${max}.` };
+  return { value: Math.round(number), note: "" };
+}
+
+/**
+ * Repeat size is 1–8, and the picture stays within 4096 pixels on a side.
+ * Zero is rejected.
+ * @param {string | number} raw
+ * @param {number} total
+ */
+export function repeatScale(raw, total) {
+  const bounded = limitNumber(raw, 1, 8, "Repeat size");
+  if (bounded.value == null) return bounded;
+  const threads = Math.max(1, Number(total) || 1);
+  const maxFit = Math.max(1, Math.floor(4096 / threads));
+  if (bounded.value > maxFit) return { value: maxFit, note: `Capped at ${maxFit}.` };
+  return bounded;
+}
+
+/**
  * @param {string} hash
  */
 export function decodeShare(hash) {

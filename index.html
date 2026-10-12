@@ -70,13 +70,19 @@
       <div class="pair">
         <label>Repeat size
           <input id="png-scale" type="number" min="1" max="8" value="2" inputmode="numeric">
+          <span class="field-range">1–8</span>
+          <span class="field-note" id="png-scale-note"></span>
         </label>
         <label>Tile width
           <input id="tile-w" type="number" min="16" max="4096" value="800" inputmode="numeric">
+          <span class="field-range">16–4096</span>
+          <span class="field-note" id="tile-w-note"></span>
         </label>
       </div>
       <label>Tile height
         <input id="tile-h" type="number" min="16" max="4096" value="800" inputmode="numeric">
+        <span class="field-range">16–4096</span>
+        <span class="field-note" id="tile-h-note"></span>
       </label>
       <div class="actions">
         <button id="png-repeat" class="primary" type="button">PNG, one repeat</button>

@@ -2,7 +2,9 @@ import { COMPARE_URL, PRESETS } from "./presets.js";
 import {
   buildDesign,
   decodeShare,
-  encodeShare,
+  limitNumber,
+  repeatScale,
+  shareHref,
   formatPalette,
   formatThreadcount,
   moveToken,
@@ -55,22 +57,24 @@ function activePreset() {
 }
 
 function syncHash() {
-  const next = encodeShare(state.paletteText, state.threadcountText);
+  const palette = paletteBox.value;
+  const threadcount = threadBox.value;
   const current = decodeShare(location.hash);
-  if (
-    current &&
-    current.palette === state.paletteText &&
-    current.threadcount === state.threadcountText
-  ) {
-    return;
-  }
-  history.replaceState(null, "", `#${next}`);
+  if (current && current.palette === palette && current.threadcount === threadcount) return;
+  history.replaceState(null, "", shareHref(location.href, palette, threadcount));
+}
+
+function placeHeader() {
+  const block = Math.ceil(document.querySelector(".top").getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--header-block", `${block}px`);
 }
 
 function renderMeta() {
   const design = currentDesign();
   const preset = activePreset();
   title.textContent = preset ? preset.name : "Custom";
+  title.title = title.textContent;
+  placeHeader();
   canvas.setAttribute(
     "aria-label",
     design.total
@@ -400,17 +404,11 @@ function renderPresets() {
       const name = document.createElement("span");
       name.className = "missing-name";
       name.textContent = preset.name;
-      const status = document.createElement("span");
-      status.className = "missing-status";
-      status.textContent = preset.availability;
       const line = document.createElement("span");
       line.className = "missing-story";
       line.textContent = preset.story;
-      item.append(name, document.createTextNode(" · "), status, document.createTextNode(" "), line);
-      if (preset.registerUrl) {
-        item.append(document.createTextNode(" "));
-        item.append(anchor(preset.registerUrl, "Register"));
-      }
+      item.append(name, line);
+      if (preset.registerUrl) item.append(anchor(preset.registerUrl, "Register"));
       missingList.append(item);
       continue;
     }
@@ -449,13 +447,27 @@ function exportCanvas(width, height, threadPx) {
   return out;
 }
 
+function bindLimit(input, note, min, max, label) {
+  const apply = () => {
+    const result = limitNumber(input.value, min, max, label);
+    note.textContent = result.note;
+    if (result.value != null && result.note) input.value = String(result.value);
+    return result;
+  };
+  input.addEventListener("input", apply);
+  input.addEventListener("blur", apply);
+}
+
 function exportRepeat() {
   const design = currentDesign();
-  if (!design.total) return;
-  const requested = Number(document.querySelector("#png-scale").value) || 2;
-  const scale = Math.max(1, Math.min(requested, Math.floor(4096 / design.total) || 1));
-  const size = design.total * scale;
-  exportCanvas(size, size, scale).toBlob((blob) => {
+  const input = document.querySelector("#png-scale");
+  const note = document.querySelector("#png-scale-note");
+  const result = repeatScale(input.value, design.total);
+  note.textContent = result.note;
+  if (result.value == null || !design.total) return;
+  input.value = String(result.value);
+  const size = design.total * result.value;
+  exportCanvas(size, size, result.value).toBlob((blob) => {
     if (blob) downloadBlob(blob, `${fileStem()}-repeat.png`);
   }, "image/png");
 }
@@ -463,18 +475,25 @@ function exportRepeat() {
 function exportTile() {
   const design = currentDesign();
   if (!design.total) return;
-  const width = clampSize(document.querySelector("#tile-w").value);
-  const height = clampSize(document.querySelector("#tile-h").value);
-  const threadPx = Math.max(1, Math.min(8, Number(document.querySelector("#png-scale").value) || 2));
+  const width = commitLimit("#tile-w", "#tile-w-note", 16, 4096, "Tile width");
+  const height = commitLimit("#tile-h", "#tile-h-note", 16, 4096, "Tile height");
+  const scale = limitNumber(document.querySelector("#png-scale").value, 1, 8, "Repeat size");
+  document.querySelector("#png-scale-note").textContent = scale.note;
+  if (width == null || height == null || scale.value == null) return;
+  const threadPx = scale.value;
   exportCanvas(width, height, threadPx).toBlob((blob) => {
     if (blob) downloadBlob(blob, `${fileStem()}-tile.png`);
   }, "image/png");
 }
 
-function clampSize(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 800;
-  return Math.max(16, Math.min(4096, Math.round(number)));
+function commitLimit(selector, noteSelector, min, max, label) {
+  const input = document.querySelector(selector);
+  const note = document.querySelector(noteSelector);
+  const result = limitNumber(input.value, min, max, label);
+  note.textContent = result.note;
+  if (result.value == null) return null;
+  input.value = String(result.value);
+  return result.value;
 }
 
 function exportSvg() {
@@ -572,8 +591,15 @@ function wire() {
     setTheme(next);
   });
   shareButton.addEventListener("click", () => {
-    copyText(location.href, shareButton);
+    state.paletteText = paletteBox.value;
+    state.threadcountText = threadBox.value;
+    const href = shareHref(location.href, state.paletteText, state.threadcountText);
+    history.replaceState(null, "", href);
+    copyText(href, shareButton);
   });
+  bindLimit(document.querySelector("#png-scale"), document.querySelector("#png-scale-note"), 1, 8, "Repeat size");
+  bindLimit(document.querySelector("#tile-w"), document.querySelector("#tile-w-note"), 16, 4096, "Tile width");
+  bindLimit(document.querySelector("#tile-h"), document.querySelector("#tile-h-note"), 16, 4096, "Tile height");
   document.querySelector("#copy-palette").addEventListener("click", (event) => {
     copyText(state.paletteText, event.currentTarget);
   });
@@ -584,7 +610,10 @@ function wire() {
   document.querySelector("#png-tile").addEventListener("click", exportTile);
   document.querySelector("#svg").addEventListener("click", exportSvg);
   document.querySelector("#compare").href = COMPARE_URL;
-  window.addEventListener("resize", schedulePaint);
+  window.addEventListener("resize", () => {
+    placeHeader();
+    schedulePaint();
+  });
   window.addEventListener("hashchange", () => {
     const shared = decodeShare(location.hash);
     if (!shared) return;
@@ -609,6 +638,7 @@ function boot() {
     loadPreset(PRESETS[0]);
   }
   if (window.matchMedia("(min-width: 960px)").matches) setSheet(true);
+  placeHeader();
 }
 
 boot();
